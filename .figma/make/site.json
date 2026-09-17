@@ -1,0 +1,10 @@
+{
+  "description": "A dashboard for farmers to track and manage field activities, view worker logs, and monitor recording accuracy for efficient farm management.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
