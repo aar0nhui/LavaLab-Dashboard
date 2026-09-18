@@ -48,9 +48,10 @@ function AppShell() {
         unreadCount={unreadCount}
       />
       <main className="flex-1 overflow-y-auto" style={{ background: "var(--color-bg)" }}>
-        {activeRoute === "dashboard" && <Dashboard onNavigate={handleNavigate} onUnreadCountChange={setUnreadCount} navState={navState} />}
+        {activeRoute === "dashboard" && <Dashboard onNavigate={handleNavigate} onUnreadCountChange={setUnreadCount} navState={navState} mode="dashboard" />}
+        {activeRoute === "activity-logs" && <Dashboard onNavigate={handleNavigate} navState={navState} mode="activity-logs" />}
         {activeRoute === "map" && <MapPage focusLat={mapFocus?.lat} focusLng={mapFocus?.lng} onNavigate={handleNavigate} />}
-        {activeRoute !== "dashboard" && activeRoute !== "map" && (
+        {activeRoute !== "dashboard" && activeRoute !== "activity-logs" && activeRoute !== "map" && (
           <div className="flex items-center justify-center h-full" style={{ color: "var(--color-text-muted)", fontFamily: "var(--font-display)" }}>
             <div className="text-center">
               <p className="text-2xl font-medium capitalize">{activeRoute.replace("-", " ")}</p>

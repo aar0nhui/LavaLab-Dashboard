@@ -2,8 +2,9 @@ import React, { useState, useMemo, useEffect } from "react";
 import { DEMO_NEW_RECORDINGS_COUNT, MOCK_LOGS, formatDate, isThisMonth, type LogEntry, type Activity } from "../data/logs";
 import { supabase } from "../../utils/supabase/client";
 import { useAuth } from "../lib/auth";
-import Map from "react-map-gl/mapbox";
+import Map, { Source, Layer } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { FIELDS } from "../data/fields";
 
 const _envToken = import.meta.env.VITE_MAPBOX_TOKEN as string;
 const MAPBOX_TOKEN = (_envToken && _envToken.startsWith("pk.")) ? _envToken : "pk.eyJ1IjoiYWFyb25odWkiLCJhIjoiY211NHRrZjViMGIydjJ6cHkweGZvbzBsZyJ9.EkKbkaNv8-FZgHQYN3sxiQ";
@@ -298,6 +299,8 @@ const ExpandedRow = ({
 
   const initViewState = React.useMemo(() => ({ longitude: entry.lng, latitude: entry.lat, zoom: 14 }), [entry.lng, entry.lat]);
 
+  const fieldData = FIELDS[entry.field];
+
   const memoizedMap = React.useMemo(() => (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
       <Map
@@ -308,7 +311,32 @@ const ExpandedRow = ({
         scrollZoom={false}
         dragPan={false}
         doubleClickZoom={false}
-      />
+      >
+        {fieldData && (
+          <Source id="field-polygon" type="geojson" data={{
+            type: "Feature",
+            geometry: { type: "Polygon", coordinates: [fieldData.polygon] },
+            properties: {}
+          }}>
+            <Layer
+              id="field-layer"
+              type="fill"
+              paint={{
+                "fill-color": fieldData.color,
+                "fill-opacity": 0.3
+              }}
+            />
+            <Layer
+              id="field-layer-line"
+              type="line"
+              paint={{
+                "line-color": fieldData.color,
+                "line-width": 2
+              }}
+            />
+          </Source>
+        )}
+      </Map>
       {/* Absolute centered marker since the map is static */}
       <div style={{
         position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
@@ -317,7 +345,7 @@ const ExpandedRow = ({
         pointerEvents: "none"
       }}/>
     </div>
-  ), [initViewState]);
+  ), [initViewState, fieldData]);
 
   return (
     <div style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
@@ -417,19 +445,20 @@ const ExpandedRow = ({
   );
 };
 
+import AddLogModal from "./AddLogModal";
+import EditLogModal from "./EditLogModal";
+
 // ── Dashboard (default export) ────────────────────────────────────────────────
 
-export default function Dashboard({ 
-  onNavigate,
-  onUnreadCountChange,
-  navState
-}: { 
+export default function Dashboard({ onNavigate, onUnreadCountChange, navState, mode = "dashboard" }: { 
   onNavigate: (route: string, state?: Record<string, unknown>) => void;
   onUnreadCountChange?: (count: number) => void;
   navState?: Record<string, unknown> | null;
+  mode?: "dashboard" | "activity-logs";
 }) {
   const { profile } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [addLogOpen, setAddLogOpen] = useState(false);
   const [newTag, setNewTag] = useState("");
   const [sortBy, setSortBy] = useState<"Date" | "Name" | null>(null);
   const [filterBy, setFilterBy] = useState<"This Month" | "This Week" | "Today" | "Unread" | null>(null);
@@ -439,6 +468,9 @@ export default function Dashboard({
   const [loading, setLoading] = useState(true);
   const [savingTag, setSavingTag] = useState<string | null>(null);
   const [viewedInUnread, setViewedInUnread] = useState<Set<string>>(new Set());
+  
+  const [selectedLogs, setSelectedLogs] = useState<Set<string>>(new Set());
+  const [editLogId, setEditLogId] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -498,21 +530,39 @@ export default function Dashboard({
         return;
       }
 
-      setLogs(data.map((r: any) => ({
-        id: r.id,
-        employeeName: r.employee_name,
-        activity: r.activity as Activity,
-        date: r.date,
-        field: r.field,
-        timeStart: r.time_start,
-        timeEnd: r.time_end,
-        lat: r.lat != null ? Number(r.lat) : NaN,
-        lng: r.lng != null ? Number(r.lng) : NaN,
-        tags: r.tags ?? [],
-        summary: r.summary,
-        audioPath: r.audio_path ?? null,
-        read: r.read ?? false,
-      })));
+      const parsedLogs = data.map((r: any) => {
+        let lat = r.lat != null ? Number(r.lat) : NaN;
+        let lng = r.lng != null ? Number(r.lng) : NaN;
+        
+        // Auto-heal DB coordinates if they don't match the new field definitions
+        const fieldData = FIELDS[r.field];
+        if (fieldData) {
+          if (Math.abs(lat - fieldData.center.lat) > 0.0001 || Math.abs(lng - fieldData.center.lng) > 0.0001) {
+            console.log(`[logs] Auto-healing coordinates for ${r.id} to match ${r.field}`);
+            supabase.from("logs").update({ lat: fieldData.center.lat, lng: fieldData.center.lng }).eq("id", r.id).then();
+            lat = fieldData.center.lat;
+            lng = fieldData.center.lng;
+          }
+        }
+
+        return {
+          id: r.id,
+          employeeName: r.employee_name,
+          activity: r.activity as Activity,
+          date: r.date,
+          field: r.field,
+          timeStart: r.time_start,
+          timeEnd: r.time_end,
+          lat,
+          lng,
+          tags: r.tags ?? [],
+          summary: r.summary,
+          audioPath: r.audio_path ?? null,
+          read: r.read ?? false,
+        };
+      });
+      
+      setLogs(parsedLogs);
       setLoading(false);
     }
 
@@ -610,12 +660,15 @@ export default function Dashboard({
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "28px" }}>
         <div>
           <h1 style={{ fontFamily: "var(--font-display)", fontSize: "1.85rem", fontWeight: 700, color: "#111", letterSpacing: "-0.03em", lineHeight: 1, margin: 0 }}>
-            Dashboard
+            {mode === "activity-logs" ? "Activity Logs" : "Dashboard"}
           </h1>
           <p style={{ fontSize: "0.82rem", color: "#999", marginTop: "6px" }}>
-            {profile?.role === "employee"
-              ? `Viewing your activity logs, ${profile?.full_name?.split(" ")[0] || ""}`
-              : "An overview of your farm and employee activity"}
+            {mode === "activity-logs" 
+              ? (profile?.role === "employee" ? `Viewing all your activity logs` : "A complete log of farm and employee activity")
+              : (profile?.role === "employee"
+                  ? `Viewing your activity logs, ${profile?.full_name?.split(" ")[0] || ""}`
+                  : "An overview of your farm and employee activity")
+            }
           </p>
         </div>
         {/* Search bar */}
@@ -643,7 +696,6 @@ export default function Dashboard({
             }}
             onBlur={(e) => {
               e.currentTarget.style.borderColor = "#e5e5e5";
-              // Delay hiding so clicks on dropdown register
               setTimeout(() => setSearchFocused(false), 200);
             }}
           />
@@ -679,18 +731,20 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "16px", marginBottom: "28px" }}>
-        <StatCard 
-          label="Today's Recordings" 
-          value="5" 
-          newCount={logs.filter(l => !l.read).length} 
-          icon={<CalendarStatIcon />}
-          onBadgeClick={() => setFilterBy("Unread")}
-        />
-        <StatCard label="Active Workers" value="12" icon={<ClipboardIcon />}/>
-        <StatCard label="Response Accuracy" value="90" icon={<PercentIcon />}/>
-      </div>
+      {/* Stat Cards (Dashboard only) */}
+      {mode === "dashboard" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "16px", marginBottom: "28px" }}>
+          <StatCard 
+            label="Today's Recordings" 
+            value="5" 
+            newCount={logs.filter(l => !l.read).length} 
+            icon={<CalendarStatIcon />}
+            onBadgeClick={() => setFilterBy("Unread")}
+          />
+          <StatCard label="Active Workers" value="12" icon={<ClipboardIcon />}/>
+          <StatCard label="Response Accuracy" value="90" icon={<PercentIcon />}/>
+        </div>
+      )}
 
       {/* Table */}
       <div style={{ background: "#fff", border: "1px solid #e5e5e5", borderRadius: "16px", overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
@@ -700,7 +754,7 @@ export default function Dashboard({
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ color: "#aaa", display: "flex" }}><BroadcastIcon /></span>
             <h2 style={{ fontFamily: "var(--font-display)", fontSize: "0.95rem", fontWeight: 600, color: "#111", letterSpacing: "-0.01em", margin: 0 }}>
-              New Employee Logs
+              {mode === "activity-logs" ? "All Logs" : "New Employee Logs"}
             </h2>
             <span style={{ fontSize: "0.72rem", color: "#aaa", background: "#f5f5f5", borderRadius: "999px", padding: "1px 7px" }}>
               {displayed.length}
@@ -708,6 +762,56 @@ export default function Dashboard({
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             
+            {/* Action Buttons (Edit/Delete) */}
+            {selectedLogs.size > 0 && (
+              <>
+                {selectedLogs.size === 1 && (
+                  <button
+                    onClick={() => setEditLogId(Array.from(selectedLogs)[0])}
+                    style={{
+                      display: "flex", alignItems: "center", gap: "6px",
+                      fontSize: "0.72rem", padding: "5px 12px", borderRadius: "999px", cursor: "pointer",
+                      background: "#fff", color: "#111", border: "1px solid #e5e5e5", fontWeight: 500, fontFamily: "var(--font-body)",
+                    }}
+                  >
+                    Edit
+                  </button>
+                )}
+                <button
+                  onClick={async () => {
+                    const ids = Array.from(selectedLogs);
+                    const { error } = await supabase.from("logs").delete().in("id", ids);
+                    if (!error) {
+                      setSelectedLogs(new Set());
+                    } else {
+                      console.error("Failed to delete logs", error);
+                    }
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "6px",
+                    fontSize: "0.72rem", padding: "5px 12px", borderRadius: "999px", cursor: "pointer",
+                    background: "#fee", color: "#ef4444", border: "1px solid #fcc", fontWeight: 500, fontFamily: "var(--font-body)",
+                  }}
+                >
+                  Delete ({selectedLogs.size})
+                </button>
+              </>
+            )}
+
+            {/* Add Log Button */}
+            {mode === "activity-logs" && selectedLogs.size === 0 && (
+              <button
+                onClick={() => setAddLogOpen(true)}
+                style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  fontSize: "0.72rem", padding: "5px 12px", borderRadius: "999px", cursor: "pointer",
+                  background: "#111", color: "#fff", border: "none", fontWeight: 500, fontFamily: "var(--font-body)",
+                }}
+              >
+                + Add Log
+              </button>
+            )}
+
             {/* Sort Group */}
             {sortBy && (
               <button
@@ -806,7 +910,18 @@ export default function Dashboard({
 
         {/* Column headers */}
         <div style={{ display: "grid", gridTemplateColumns: "32px 2fr 1.2fr 1.5fr 0.6fr 1.1fr 88px", padding: "10px 24px", background: "#fafafa", borderBottom: "1px solid #f0f0f0", alignItems: "center" }}>
-          <input type="checkbox" style={{ width: "14px", height: "14px", accentColor: "#111", cursor: "pointer" }}/>
+          <input 
+            type="checkbox" 
+            checked={displayed.length > 0 && selectedLogs.size === displayed.length}
+            onChange={e => {
+              if (e.target.checked) {
+                setSelectedLogs(new Set(displayed.map(l => l.id)));
+              } else {
+                setSelectedLogs(new Set());
+              }
+            }}
+            style={{ width: "14px", height: "14px", accentColor: "#111", cursor: "pointer" }}
+          />
           {["Employee", "Activity", "Date", "Field", "Time", ""].map(h => (
             <span key={h} style={{ fontSize: "0.63rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.09em", color: "#bbb", fontFamily: "var(--font-mono)" }}>
               {h}
@@ -842,7 +957,17 @@ export default function Dashboard({
                 onMouseLeave={e => { if (!expanded) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
               >
                 {/* Checkbox */}
-                <input type="checkbox" style={{ width: "14px", height: "14px", accentColor: "#111", cursor: "pointer" }}/>
+                <input 
+                  type="checkbox" 
+                  checked={selectedLogs.has(entry.id)}
+                  onChange={e => {
+                    const next = new Set(selectedLogs);
+                    if (e.target.checked) next.add(entry.id);
+                    else next.delete(entry.id);
+                    setSelectedLogs(next);
+                  }}
+                  style={{ width: "14px", height: "14px", accentColor: "#111", cursor: "pointer" }}
+                />
                 {/* Name */}
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#f0f0f0", color: "#666", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", fontWeight: 600, flexShrink: 0, fontFamily: "var(--font-display)" }}>
@@ -856,7 +981,7 @@ export default function Dashboard({
                 <span style={{ fontSize: "0.82rem", color: "#666" }}>{formatDate(entry.date)}</span>
                 {/* Field */}
                 <span style={{ fontSize: "0.8rem", color: "#333", fontWeight: 500 }}>
-                  FIELD {entry.field}
+                  {entry.field}
                 </span>
                 {/* Time */}
                 <span style={{ fontSize: "0.8rem", color: "#555" }}>{entry.timeStart} - {entry.timeEnd}</span>
@@ -913,8 +1038,26 @@ export default function Dashboard({
             </div>
           );
         })}
+        </div>
       </div>
-    </div>
+      
+      {addLogOpen && (
+        <AddLogModal 
+          onClose={() => setAddLogOpen(false)} 
+          onSuccess={() => setAddLogOpen(false)} 
+        />
+      )}
+      
+      {editLogId && (
+        <EditLogModal
+          logToEdit={logs.find(l => l.id === editLogId)!}
+          onClose={() => setEditLogId(null)}
+          onSuccess={() => {
+            setEditLogId(null);
+            setSelectedLogs(new Set());
+          }}
+        />
+      )}
     </ErrorBoundary>
   );
 }

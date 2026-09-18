@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
-import Map, { Marker, Popup } from "react-map-gl/mapbox";
+import Map, { Marker, Popup, Source, Layer } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { supabase } from "../../utils/supabase/client";
 import { MOCK_LOGS, type LogEntry, type Activity, isThisMonth } from "../data/logs";
+import { FIELDS } from "../data/fields";
 
 const FilterIcon = () => (
   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -51,20 +52,36 @@ export default function MapPage({
         setLoading(false);
         return;
       }
-      setLogs(data.map((r: any) => ({
-        id: r.id,
-        employeeName: r.employee_name,
-        activity: r.activity as Activity,
-        date: r.date,
-        field: r.field,
-        timeStart: r.time_start,
-        timeEnd: r.time_end,
-        lat: r.lat != null ? Number(r.lat) : NaN,
-        lng: r.lng != null ? Number(r.lng) : NaN,
-        tags: r.tags ?? [],
-        summary: r.summary,
-        read: r.read ?? false,
-      })));
+      const parsedLogs = data.map((r: any) => {
+        let lat = r.lat != null ? Number(r.lat) : NaN;
+        let lng = r.lng != null ? Number(r.lng) : NaN;
+
+        const fieldData = FIELDS[r.field];
+        if (fieldData) {
+          if (Math.abs(lat - fieldData.center.lat) > 0.0001 || Math.abs(lng - fieldData.center.lng) > 0.0001) {
+            console.log(`[map] Auto-healing coordinates for ${r.id} to match ${r.field}`);
+            supabase.from("logs").update({ lat: fieldData.center.lat, lng: fieldData.center.lng }).eq("id", r.id).then();
+            lat = fieldData.center.lat;
+            lng = fieldData.center.lng;
+          }
+        }
+
+        return {
+          id: r.id,
+          employeeName: r.employee_name,
+          activity: r.activity as Activity,
+          date: r.date,
+          field: r.field,
+          timeStart: r.time_start,
+          timeEnd: r.time_end,
+          lat,
+          lng,
+          tags: r.tags ?? [],
+          summary: r.summary,
+          read: r.read ?? false,
+        };
+      });
+      setLogs(parsedLogs);
       setLoading(false);
     });
   }, []);
@@ -183,6 +200,30 @@ export default function MapPage({
             mapboxAccessToken={MAPBOX_TOKEN}
             onClick={() => setSelected(null)}
           >
+            {Object.values(FIELDS).map(field => (
+              <Source key={field.id} id={`field-polygon-${field.id}`} type="geojson" data={{
+                type: "Feature",
+                geometry: { type: "Polygon", coordinates: [field.polygon] },
+                properties: {}
+              }}>
+                <Layer
+                  id={`field-layer-${field.id}`}
+                  type="fill"
+                  paint={{
+                    "fill-color": field.color,
+                    "fill-opacity": 0.3
+                  }}
+                />
+                <Layer
+                  id={`field-layer-line-${field.id}`}
+                  type="line"
+                  paint={{
+                    "line-color": field.color,
+                    "line-width": 2
+                  }}
+                />
+              </Source>
+            ))}
             {validLogs.map(log => (
               <Marker
                 key={log.id}
