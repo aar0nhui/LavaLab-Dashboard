@@ -4,6 +4,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { supabase } from "../../utils/supabase/client";
 import { MOCK_LOGS, type LogEntry, type Activity, isThisMonth } from "../data/logs";
 import { FIELDS } from "../data/fields";
+import { useAuth } from "../lib/auth";
 
 const FilterIcon = () => (
   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -38,6 +39,7 @@ export default function MapPage({
   focusLng?: number;
   onNavigate?: (route: string, state?: Record<string, unknown>) => void;
 }) {
+  const { profile } = useAuth();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<LogEntry | null>(null);
@@ -46,9 +48,19 @@ export default function MapPage({
   const [filterOpen, setFilterOpen] = useState(false);
 
   useEffect(() => {
-    supabase.from("logs").select("*").then(({ data, error }) => {
+    if (profile === undefined) return;
+
+    let query = supabase.from("logs").select("*");
+    if (profile?.role === "employee") {
+      query = query.eq("employee_name", profile.full_name);
+    }
+
+    query.then(({ data, error }) => {
       if (error || !data || data.length === 0) {
-        setLogs(MOCK_LOGS);
+        const mockData = profile?.role === "employee" 
+          ? MOCK_LOGS.filter(l => l.employeeName === profile.full_name) 
+          : MOCK_LOGS;
+        setLogs(mockData);
         setLoading(false);
         return;
       }
@@ -84,7 +96,7 @@ export default function MapPage({
       setLogs(parsedLogs);
       setLoading(false);
     });
-  }, []);
+  }, [profile]);
 
   const today = new Date().toISOString().split("T")[0];
 

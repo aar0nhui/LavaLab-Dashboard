@@ -54,3 +54,14 @@ body {
 *:hover::-webkit-scrollbar-thumb {
   opacity: 1;
 }
+
+html.dark {
+  filter: invert(1) hue-rotate(180deg);
+  background: #000;
+}
+html.dark img, 
+html.dark video, 
+html.dark .mapboxgl-map, 
+html.dark [style*="background-image"] {
+  filter: invert(1) hue-rotate(180deg);
+}

@@ -217,8 +217,13 @@ export default function Sidebar({ open, onToggle, activeRoute, onNavigate, unrea
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: "11px", fontWeight: 700, flexShrink: 0,
           fontFamily: "var(--font-display)",
+          overflow: "hidden"
         }}>
-          {initials}
+          {profile?.role === "admin" ? (
+            <img src="/admin-profile.png" alt="Admin Profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            initials
+          )}
         </div>
         {open && (
           <div style={{ flex: 1, minWidth: 0 }}>
