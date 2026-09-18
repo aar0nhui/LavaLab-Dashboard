@@ -117,7 +117,13 @@ const IconInbox = () => (
   </svg>
 );
 
-// Nav data — icons must be declared above this
+const IconInboxClosed = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M1.5 5V10.5C1.5 11 2 11.5 2.5 11.5H11.5C12 11.5 12.5 11 12.5 10.5V5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+    <path d="M1 3.5C1 3 1.5 2.5 2 2.5H12C12.5 2.5 13 3 13 3.5V5H1V3.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+  </svg>
+);
+
 
 const NAV_GROUPS = [
   {
@@ -161,9 +167,10 @@ interface SidebarProps {
   onToggle: () => void;
   activeRoute: string;
   onNavigate: (route: string) => void;
+  unreadCount?: number;
 }
 
-export default function Sidebar({ open, onToggle, activeRoute, onNavigate }: SidebarProps) {
+export default function Sidebar({ open, onToggle, activeRoute, onNavigate, unreadCount = 0 }: SidebarProps) {
   const { profile, user, signOut } = useAuth();
 
   const displayName = profile?.full_name
@@ -197,9 +204,10 @@ export default function Sidebar({ open, onToggle, activeRoute, onNavigate }: Sid
 
       <div style={{
         display: "flex",
+        flexDirection: open ? "row" : "column",
         alignItems: "center",
-        gap: "10px",
-        padding: open ? "14px 16px" : "14px 10px",
+        gap: open ? "10px" : "12px",
+        padding: open ? "14px 16px" : "14px 0",
         borderBottom: "1px solid #f0f0f0",
         flexShrink: 0,
       }}>
@@ -213,25 +221,24 @@ export default function Sidebar({ open, onToggle, activeRoute, onNavigate }: Sid
           {initials}
         </div>
         {open && (
-          <>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: "0.82rem", fontWeight: 700, color: "#111", fontFamily: "var(--font-display)", margin: 0, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {displayName}
-              </p>
-              <p style={{ fontSize: "0.7rem", color: "#999", margin: 0, lineHeight: 1.3 }}>
-                {displayRole}
-              </p>
-            </div>
-            <button
-              onClick={onToggle}
-              style={{ color: "#ccc", background: "none", border: "none", cursor: "pointer", padding: "2px", display: "flex", flexShrink: 0 }}
-              onMouseEnter={e => (e.currentTarget.style.color = "#666")}
-              onMouseLeave={e => (e.currentTarget.style.color = "#ccc")}
-            >
-              <IconInbox />
-            </button>
-          </>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: "0.82rem", fontWeight: 700, color: "#111", fontFamily: "var(--font-display)", margin: 0, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {displayName}
+            </p>
+            <p style={{ fontSize: "0.7rem", color: "#999", margin: 0, lineHeight: 1.3 }}>
+              {displayRole}
+            </p>
+          </div>
         )}
+        <button
+          onClick={onToggle}
+          title={open ? "Collapse sidebar" : "Expand sidebar"}
+          style={{ color: "#ccc", background: "none", border: "none", cursor: "pointer", padding: "2px", display: "flex", flexShrink: 0 }}
+          onMouseEnter={e => (e.currentTarget.style.color = "#666")}
+          onMouseLeave={e => (e.currentTarget.style.color = "#ccc")}
+        >
+          {open ? <IconInbox /> : <IconInboxClosed />}
+        </button>
       </div>
 
       <nav style={{
@@ -253,8 +260,9 @@ export default function Sidebar({ open, onToggle, activeRoute, onNavigate }: Sid
               </p>
             )}
             {!open && <div style={{ height: "1px", background: "#f0f0f0", margin: "6px 4px" }} />}
-            {group.items.map(({ id, label, icon: Icon }) => {
+            {group.items.map(({ id, label, icon: Icon, badge: staticBadge }) => {
               const active = activeRoute === id;
+              const badge = id === "dashboard" ? (unreadCount > 0 ? unreadCount : undefined) : staticBadge;
               return (
                 <button
                   key={id}
@@ -294,8 +302,19 @@ export default function Sidebar({ open, onToggle, activeRoute, onNavigate }: Sid
                       }}>
                         {label}
                       </span>
-                      {active && (
-                        <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#4ade80", flexShrink: 0 }} />
+                      {badge && (
+                        <span style={{
+                          fontSize: "0.65rem",
+                          background: "#eaffea",
+                          color: "#16a34a",
+                          padding: "3px 7px",
+                          borderRadius: "999px",
+                          fontWeight: 600,
+                          flexShrink: 0,
+                          fontFamily: "var(--font-mono)",
+                        }}>
+                          {badge}
+                        </span>
                       )}
                     </>
                   )}
@@ -348,34 +367,7 @@ export default function Sidebar({ open, onToggle, activeRoute, onNavigate }: Sid
           </button>
         ))}
 
-        {/* Collapse/expand toggle — always visible */}
-        <div style={{ borderTop: "1px solid #f0f0f0", marginTop: "4px", paddingTop: "8px" }}>
-          <button
-            onClick={onToggle}
-            title={open ? "Collapse sidebar" : "Expand sidebar"}
-            style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: open ? "flex-end" : "center",
-              padding: "6px 8px",
-              borderRadius: "6px",
-              background: "transparent",
-              color: "#bbb",
-              border: "none",
-              cursor: "pointer",
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#f7f7f7"; (e.currentTarget as HTMLElement).style.color = "#555"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#bbb"; }}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: open ? "none" : "rotate(180deg)", transition: "transform 0.22s" }}>
-              <path d="M9 2L4 7L9 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            {open && (
-              <span style={{ fontSize: "0.72rem", color: "#bbb", marginLeft: "4px", fontFamily: "var(--font-body)" }}>Collapse</span>
-            )}
-          </button>
-        </div>
+
       </div>
     </aside>
   );

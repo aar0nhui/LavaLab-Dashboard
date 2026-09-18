@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { MOCK_LOGS, formatDate, isThisMonth, type LogEntry, type Activity } from "../data/logs";
+import { DEMO_NEW_RECORDINGS_COUNT, MOCK_LOGS, formatDate, isThisMonth, type LogEntry, type Activity } from "../data/logs";
 import { supabase } from "../../utils/supabase/client";
 import { useAuth } from "../lib/auth";
-import Map, { Marker } from "react-map-gl/mapbox";
+import Map from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 const _envToken = import.meta.env.VITE_MAPBOX_TOKEN as string;
@@ -88,14 +88,36 @@ const BroadcastIcon = () => (
   </svg>
 );
 
+const SortIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <path d="M2.5 4L6 1.5L9.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M2.5 8L6 10.5L9.5 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <line x1="6" y1="2" x2="6" y2="10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+  </svg>
+);
+
+const FilterIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <path d="M1 2.5H11L7 7.5V11L5 10V7.5L1 2.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const PillXIcon = () => (
+  <svg width="8" height="8" viewBox="0 0 12 12" fill="none" style={{ marginTop: "1px", opacity: 0.8 }}>
+    <path d="M1 1L11 11M11 1L1 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
+
 
 // ── StatCard ──────────────────────────────────────────────────────────────────
 
-const StatCard = ({ label, value, icon, newCount }: {
+const StatCard = ({ label, value, icon, newCount, onBadgeClick }: {
   label: string;
   value: string;
   icon: React.ReactNode;
   newCount?: number;
+  onBadgeClick?: () => void;
 }) => (
   <div
     style={{
@@ -112,14 +134,32 @@ const StatCard = ({ label, value, icon, newCount }: {
         {label}
       </span>
     </div>
-    <p style={{ fontFamily: "var(--font-display)", fontSize: "2.4rem", fontWeight: 700, color: "#111", letterSpacing: "-0.04em", lineHeight: 1, margin: 0 }}>
-      {value}
-    </p>
-    {newCount !== undefined && (
-      <p style={{ fontSize: "0.72rem", color: "#aaa", marginTop: "6px", fontFamily: "var(--font-body)" }}>
-        {newCount} new
+    <div style={{ display: "flex", alignItems: "flex-end", gap: "8px" }}>
+      <p style={{ fontFamily: "var(--font-display)", fontSize: "2.4rem", fontWeight: 700, color: "#111", letterSpacing: "-0.04em", lineHeight: 1, margin: 0 }}>
+        {value}
       </p>
-    )}
+      {newCount !== undefined && (
+        <button
+          onClick={onBadgeClick}
+          style={{
+            fontSize: "0.72rem",
+            color: "#aaa",
+            fontFamily: "var(--font-body)",
+            marginBottom: "4px",
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: onBadgeClick ? "pointer" : "default",
+            textDecoration: onBadgeClick ? "underline" : "none",
+            textUnderlineOffset: "2px"
+          }}
+          onMouseEnter={e => { if (onBadgeClick) (e.currentTarget.style.color = "#888"); }}
+          onMouseLeave={e => { if (onBadgeClick) (e.currentTarget.style.color = "#aaa"); }}
+        >
+          {newCount === 0 ? "all read" : `${newCount} new`}
+        </button>
+      )}
+    </div>
   </div>
 );
 
@@ -154,6 +194,22 @@ const StaticMap = ({ field }: { field: string }) => {
 
 // ── ExpandedRow ───────────────────────────────────────────────────────────────
 
+
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
+  constructor(props: {children: React.ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return <div style={{ padding: 20, color: "red", background: "#fee" }}>Error: {this.state.error?.message}</div>;
+    }
+    return this.props.children;
+  }
+}
 
 const WaveformPlayer = ({ entry }: { entry: LogEntry }) => {
   const audioRef = React.useRef<HTMLAudioElement>(null);
@@ -197,12 +253,15 @@ const WaveformPlayer = ({ entry }: { entry: LogEntry }) => {
           onEnded={() => { setPlaying(false); setProgress(0); }}
         />
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: "2px", height: "64px", marginBottom: "16px" }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "center", gap: "3px", height: "60px", marginBottom: "20px" }}>
+        {/* Middle line */}
+        <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: "1px", background: "#e0e0e0", transform: "translateY(-50%)" }} />
         {waveHeights.map((h, i) => (
           <div key={i} style={{
+            position: "relative", zIndex: 1,
             flex: 1, minWidth: "2px", height: `${h}px`, borderRadius: "2px",
-            background: i < playedBars ? "#111" : "#d4d4d4",
-            transition: "background 0.05s",
+            background: i < playedBars ? "#8abf98" : "#cde0d3",
+            transition: "background 0.05s"
           }} />
         ))}
       </div>
@@ -234,15 +293,38 @@ const ExpandedRow = ({
   saving?: boolean;
   onExpandMap: (lat: number, lng: number) => void;
 }) => {
-  const [mapExpanded, setMapExpanded] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  const initViewState = React.useMemo(() => ({ longitude: entry.lng, latitude: entry.lat, zoom: 14 }), [entry.lng, entry.lat]);
+
+  const memoizedMap = React.useMemo(() => (
+    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      <Map
+        initialViewState={initViewState}
+        style={{ width: "100%", height: "100%" }}
+        mapStyle="mapbox://styles/mapbox/satellite-streets-v12"
+        mapboxAccessToken={MAPBOX_TOKEN}
+        scrollZoom={false}
+        dragPan={false}
+        doubleClickZoom={false}
+      />
+      {/* Absolute centered marker since the map is static */}
+      <div style={{
+        position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+        width: "16px", height: "16px", borderRadius: "50%", background: "#2563eb",
+        border: "3px solid #fff", boxShadow: "0 0 0 4px rgba(37,99,235,0.25)",
+        pointerEvents: "none"
+      }}/>
+    </div>
+  ), [initViewState]);
 
   return (
     <div style={{ background: "#fff", borderTop: "1px solid #f0f0f0" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: "64px", padding: "32px 40px" }}>
 
         {/* ── Left: waveform + controls + summary ── */}
-        <div style={{ padding: "24px 28px", borderRight: "1px solid #f0f0f0" }}>
+        <div style={{ display: "flex", flexDirection: "column" }}>
 
           <WaveformPlayer entry={entry} />
 
@@ -301,46 +383,34 @@ const ExpandedRow = ({
               </p>
               {saving && <span style={{ fontSize: "0.7rem", color: "#aaa", fontFamily: "var(--font-body)" }}>Saving…</span>}
             </div>
-            <p style={{ fontSize: "0.8rem", lineHeight: 1.7, color: "#666", margin: 0 }}>
+            <p style={{ fontSize: "0.8rem", lineHeight: 1.7, color: "#aaa", margin: 0 }}>
               {entry.summary}
             </p>
           </div>
         </div>
 
         {/* ── Right: satellite map ── */}
-        <div style={{ position: "relative", overflow: "hidden", minHeight: mapExpanded ? "420px" : "320px", transition: "min-height 0.3s ease" }}>
-          {(entry.lat == null || entry.lng == null || !isFinite(entry.lat) || !isFinite(entry.lng)) ? (
-            <div style={{ width: "100%", height: "100%", minHeight: mapExpanded ? "420px" : "320px", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f5f5", color: "#bbb", fontSize: "0.8rem", fontFamily: "var(--font-body)" }}>
-              No location data
-            </div>
-          ) : (
-            <>
-              <Map
-                initialViewState={{ longitude: entry.lng, latitude: entry.lat, zoom: 14 }}
-                style={{ width: "100%", height: "100%", minHeight: mapExpanded ? "420px" : "320px" }}
-                mapStyle="mapbox://styles/mapbox/satellite-streets-v12"
-                mapboxAccessToken={MAPBOX_TOKEN}
-                scrollZoom={false}
-              >
-                <Marker longitude={entry.lng} latitude={entry.lat} anchor="center">
-                  <div style={{ width: "16px", height: "16px", borderRadius: "50%", background: "#2563eb", border: "3px solid #fff", boxShadow: "0 0 0 4px rgba(37,99,235,0.25)" }}/>
-                </Marker>
-              </Map>
-              <button
-                onClick={() => onExpandMap(entry.lat, entry.lng)}
-                style={{
-                  position: "absolute", bottom: "14px", right: "14px", zIndex: 10,
-                  display: "flex", alignItems: "center", gap: "6px",
-                  padding: "7px 14px", borderRadius: "8px", fontSize: "0.75rem", fontWeight: 500,
-                  background: "rgba(255,255,255,0.92)", color: "#333", border: "none", cursor: "pointer",
-                  backdropFilter: "blur(4px)", boxShadow: "0 1px 4px rgba(0,0,0,0.15)",
-                  fontFamily: "var(--font-body)",
-                }}
-              >
-                <ExpandIcon /> Open in Maps
-              </button>
-            </>
-          )}
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div style={{ position: "relative", overflow: "hidden", minHeight: "280px", borderRadius: "12px" }}>
+            {(entry.lat == null || entry.lng == null || !isFinite(entry.lat) || !isFinite(entry.lng)) ? (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f5f5", color: "#bbb", fontSize: "0.8rem", fontFamily: "var(--font-body)", borderRadius: "12px" }}>
+                No location data
+              </div>
+            ) : (
+              memoizedMap
+            )}
+          </div>
+          <button
+            onClick={() => onExpandMap(entry.lat, entry.lng)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+              width: "100%", padding: "10px", borderRadius: "8px",
+              background: "#fff", border: "1px solid #e5e5e5", cursor: "pointer",
+              fontSize: "0.82rem", fontWeight: 500, color: "#333", fontFamily: "var(--font-body)",
+            }}
+          >
+            <ExpandIcon /> Expand Map
+          </button>
         </div>
       </div>
     </div>
@@ -349,15 +419,55 @@ const ExpandedRow = ({
 
 // ── Dashboard (default export) ────────────────────────────────────────────────
 
-export default function Dashboard({ onNavigate }: { onNavigate: (route: string, state?: Record<string, unknown>) => void }) {
+export default function Dashboard({ 
+  onNavigate,
+  onUnreadCountChange,
+  navState
+}: { 
+  onNavigate: (route: string, state?: Record<string, unknown>) => void;
+  onUnreadCountChange?: (count: number) => void;
+  navState?: Record<string, unknown> | null;
+}) {
   const { profile } = useAuth();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [newTag, setNewTag] = useState("");
-  const [sortBy, setSortBy] = useState<"date" | "name" | "activity" | null>(null);
-  const [filterMonth, setFilterMonth] = useState(false);
+  const [sortBy, setSortBy] = useState<"Date" | "Name" | null>(null);
+  const [filterBy, setFilterBy] = useState<"This Month" | "This Week" | "Today" | "Unread" | null>(null);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTag, setSavingTag] = useState<string | null>(null);
+  const [viewedInUnread, setViewedInUnread] = useState<Set<string>>(new Set());
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+
+  const allAvailableTags = React.useMemo(() => {
+    const tags = new Set<string>();
+    logs.forEach(l => (l.tags || []).forEach(t => { if (t) tags.add(t); }));
+    return Array.from(tags);
+  }, [logs]);
+
+  const matchingTags = searchQuery.trim() ? allAvailableTags.filter(t => t && t.toLowerCase().includes(searchQuery.toLowerCase()) && t.toLowerCase() !== searchQuery.toLowerCase()) : [];
+
+  useEffect(() => {
+    if (navState?.openLogId) {
+      setExpandedId(navState.openLogId as string);
+      
+      // Also mark it as read immediately if it's currently unread
+      const log = logs.find(l => l.id === navState.openLogId);
+      if (log && !log.read) {
+        setLogs(prev => prev.map(l => l.id === navState.openLogId ? { ...l, read: true } : l));
+        supabase.from("logs").update({ read: true }).eq("id", navState.openLogId).then();
+      }
+    }
+  }, [navState, logs]);
+  useEffect(() => {
+    if (filterBy !== "Unread") {
+      setViewedInUnread(new Set());
+    }
+  }, [filterBy]);
 
   useEffect(() => {
     // Wait until profile is loaded before fetching (if auth is active)
@@ -401,6 +511,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
         tags: r.tags ?? [],
         summary: r.summary,
         audioPath: r.audio_path ?? null,
+        read: r.read ?? false,
       })));
       setLoading(false);
     }
@@ -425,16 +536,41 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
     };
   }, [profile]);
 
+  useEffect(() => {
+    if (onUnreadCountChange) {
+      onUnreadCountChange(logs.filter(l => !l.read).length);
+    }
+  }, [logs, onUnreadCountChange]);
+
   const today = new Date().toISOString().split("T")[0];
   const todayLogs = logs.filter(l => l.date === today);
 
   const displayed = useMemo(() => {
-    let list = filterMonth ? logs.filter(l => isThisMonth(l.date)) : [...logs];
-    if (sortBy === "name") list.sort((a, b) => a.employeeName.localeCompare(b.employeeName));
-    else if (sortBy === "activity") list.sort((a, b) => a.activity.localeCompare(b.activity));
-    else list.sort((a, b) => b.date.localeCompare(a.date));
+    let list = [...logs];
+    if (filterBy === "Unread") {
+      list = list.filter(l => !l.read || viewedInUnread.has(l.id));
+    } else if (filterBy === "This Month") {
+      list = list.filter(l => isThisMonth(l.date));
+    } else if (filterBy === "This Week") {
+      const aWeekAgo = new Date();
+      aWeekAgo.setDate(aWeekAgo.getDate() - 7);
+      list = list.filter(l => new Date(l.date) >= aWeekAgo);
+    } else if (filterBy === "Today") {
+      list = list.filter(l => l.date === today);
+    }
+
+    if (searchQuery.trim()) {
+      const sq = searchQuery.toLowerCase();
+      list = list.filter(l => (l.tags || []).some(t => t && t.toLowerCase().includes(sq)));
+    }
+
+    if (sortBy === "Name") {
+      list.sort((a, b) => (a.employeeName || "").localeCompare(b.employeeName || ""));
+    } else {
+      list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    }
     return list;
-  }, [sortBy, filterMonth, logs]);
+  }, [sortBy, filterBy, logs, today, viewedInUnread, searchQuery]);
 
   const updateTagsInDb = async (id: string, newTags: string[]) => {
     setSavingTag(id);
@@ -448,7 +584,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
     if (!trimmed) return;
     setLogs(prev => prev.map(l => {
       if (l.id !== id) return l;
-      const newTags = [...l.tags, trimmed];
+      const newTags = [...(l.tags || []), trimmed];
       updateTagsInDb(id, newTags);
       return { ...l, tags: newTags };
     }));
@@ -458,14 +594,17 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
   const removeTag = (id: string, tag: string) => {
     setLogs(prev => prev.map(l => {
       if (l.id !== id) return l;
-      const newTags = l.tags.filter(t => t !== tag);
+      const newTags = (l.tags || []).filter(t => t !== tag);
       updateTagsInDb(id, newTags);
       return { ...l, tags: newTags };
     }));
   };
 
+  if (loading) return null;
+
   return (
-    <div style={{ padding: "32px 36px", maxWidth: "1200px", margin: "0 auto" }}>
+    <ErrorBoundary>
+      <div style={{ padding: "32px 36px", maxWidth: "1200px", margin: "0 auto" }}>
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "28px" }}>
@@ -475,7 +614,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
           </h1>
           <p style={{ fontSize: "0.82rem", color: "#999", marginTop: "6px" }}>
             {profile?.role === "employee"
-              ? `Viewing your activity logs, ${profile.full_name.split(" ")[0]}`
+              ? `Viewing your activity logs, ${profile?.full_name?.split(" ")[0] || ""}`
               : "An overview of your farm and employee activity"}
           </p>
         </div>
@@ -489,22 +628,66 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
           </span>
           <input
             type="text"
-            placeholder="Search"
+            placeholder="Search tags…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
             style={{
               paddingLeft: "30px", paddingRight: "14px", paddingTop: "8px", paddingBottom: "8px",
               fontSize: "0.8rem", borderRadius: "10px", outline: "none",
               border: "1px solid #e5e5e5", background: "#fff", color: "#333",
               width: "200px", fontFamily: "var(--font-body)",
             }}
-            onFocus={e => (e.currentTarget.style.borderColor = "#aaa")}
-            onBlur={e => (e.currentTarget.style.borderColor = "#e5e5e5")}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "#aaa";
+              setSearchFocused(true);
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = "#e5e5e5";
+              // Delay hiding so clicks on dropdown register
+              setTimeout(() => setSearchFocused(false), 200);
+            }}
           />
+          {/* Tag search suggestions */}
+          {searchFocused && matchingTags.length > 0 && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 4px)", left: 0, width: "100%", zIndex: 30,
+              background: "#fff", border: "1px solid #e5e5e5", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+              padding: "4px", display: "flex", flexDirection: "column", gap: "2px",
+              maxHeight: "200px", overflowY: "auto"
+            }}>
+              {matchingTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => {
+                    setSearchQuery(tag);
+                    setSearchFocused(false);
+                  }}
+                  style={{
+                    padding: "8px 10px", textAlign: "left", fontSize: "0.75rem", background: "none",
+                    border: "none", borderRadius: "4px", cursor: "pointer", color: "#333",
+                    display: "flex", alignItems: "center", gap: "6px"
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "#f5f5f5")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                >
+                  <SparkleIcon />
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Stat Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "16px", marginBottom: "28px" }}>
-        <StatCard label="Today's Recordings" value="5" newCount={todayLogs.length} icon={<CalendarStatIcon />}/>
+        <StatCard 
+          label="Today's Recordings" 
+          value="5" 
+          newCount={logs.filter(l => !l.read).length} 
+          icon={<CalendarStatIcon />}
+          onBadgeClick={() => setFilterBy("Unread")}
+        />
         <StatCard label="Active Workers" value="12" icon={<ClipboardIcon />}/>
         <StatCard label="Response Accuracy" value="90" icon={<PercentIcon />}/>
       </div>
@@ -524,42 +707,100 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <button
-              onClick={() => setSortBy(sortBy === "date" ? null : "date")}
-              style={{
-                display: "flex", alignItems: "center", gap: "5px",
-                fontSize: "0.72rem", padding: "5px 10px", borderRadius: "999px", cursor: "pointer",
-                background: sortBy === "date" ? "#111" : "#f5f5f5",
-                color: sortBy === "date" ? "#fff" : "#555",
-                border: "none", fontWeight: 500, fontFamily: "var(--font-body)",
-              }}
-            >
-              Date
-            </button>
-            <button
-              onClick={() => setSortBy(sortBy === "name" ? null : "name")}
-              style={{
-                display: "flex", alignItems: "center", gap: "5px",
-                fontSize: "0.72rem", padding: "5px 10px", borderRadius: "999px", cursor: "pointer",
-                background: sortBy === "name" ? "#111" : "#f5f5f5",
-                color: sortBy === "name" ? "#fff" : "#555",
-                border: "none", fontWeight: 500, fontFamily: "var(--font-body)",
-              }}
-            >
-              Name
-            </button>
-            <button
-              onClick={() => setFilterMonth(!filterMonth)}
-              style={{
-                display: "flex", alignItems: "center", gap: "5px",
-                fontSize: "0.72rem", padding: "5px 10px", borderRadius: "999px", cursor: "pointer",
-                background: filterMonth ? "#111" : "#f5f5f5",
-                color: filterMonth ? "#fff" : "#555",
-                border: "none", fontWeight: 500, fontFamily: "var(--font-body)",
-              }}
-            >
-              This Month
-            </button>
+            
+            {/* Sort Group */}
+            {sortBy && (
+              <button
+                onClick={() => setSortBy(null)}
+                style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  fontSize: "0.72rem", padding: "5px 10px", borderRadius: "999px", cursor: "pointer",
+                  background: "#111", color: "#fff", border: "none", fontWeight: 500, fontFamily: "var(--font-body)",
+                }}
+              >
+                <PillXIcon /> {sortBy}
+              </button>
+            )}
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => { setSortOpen(!sortOpen); setFilterOpen(false); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  fontSize: "0.72rem", padding: "5px 12px", borderRadius: "999px", cursor: "pointer",
+                  background: "#fff", color: "#555", border: "1px solid #e5e5e5", fontWeight: 500, fontFamily: "var(--font-body)",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+                }}
+              >
+                <SortIcon /> Sort
+              </button>
+              {sortOpen && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 20,
+                  background: "#fff", border: "1px solid #e5e5e5", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  padding: "4px", minWidth: "120px", display: "flex", flexDirection: "column", gap: "2px"
+                }}>
+                  {["Date", "Name"].map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => { setSortBy(opt as "Date" | "Name"); setSortOpen(false); }}
+                      style={{ padding: "6px 8px", textAlign: "left", fontSize: "0.75rem", background: "none", border: "none", borderRadius: "4px", cursor: "pointer", color: "#333" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "#f5f5f5")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Filter Group */}
+            {filterBy && (
+              <button
+                onClick={() => setFilterBy(null)}
+                style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  fontSize: "0.72rem", padding: "5px 10px", borderRadius: "999px", cursor: "pointer",
+                  background: "#111", color: "#fff", border: "none", fontWeight: 500, fontFamily: "var(--font-body)",
+                  marginLeft: "8px"
+                }}
+              >
+                <PillXIcon /> {filterBy}
+              </button>
+            )}
+            <div style={{ position: "relative" }}>
+              <button
+                onClick={() => { setFilterOpen(!filterOpen); setSortOpen(false); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: "6px",
+                  fontSize: "0.72rem", padding: "5px 12px", borderRadius: "999px", cursor: "pointer",
+                  background: "#fff", color: "#555", border: "1px solid #e5e5e5", fontWeight: 500, fontFamily: "var(--font-body)",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+                }}
+              >
+                <FilterIcon /> Filter
+              </button>
+              {filterOpen && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 20,
+                  background: "#fff", border: "1px solid #e5e5e5", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  padding: "4px", minWidth: "120px", display: "flex", flexDirection: "column", gap: "2px"
+                }}>
+                  {["This Month", "This Week", "Today", "Unread"].map(opt => (
+                    <button
+                      key={opt}
+                      onClick={() => { setFilterBy(opt as any); setFilterOpen(false); }}
+                      style={{ padding: "6px 8px", textAlign: "left", fontSize: "0.75rem", background: "none", border: "none", borderRadius: "4px", cursor: "pointer", color: "#333" }}
+                      onMouseEnter={e => (e.currentTarget.style.background = "#f5f5f5")}
+                      onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
           </div>
         </div>
 
@@ -586,7 +827,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
         )}
         {!loading && displayed.map((entry, i) => {
           const expanded = expandedId === entry.id;
-          const colors = ACTIVITY_COLORS[entry.activity];
+          const colors = ACTIVITY_COLORS[entry.activity] || { bg: "#f2f2f2", text: "#333", dot: "#666" };
           return (
             <div key={entry.id} style={{ borderBottom: i < displayed.length - 1 ? "1px solid #f5f5f5" : "none" }}>
               <div
@@ -605,9 +846,9 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
                 {/* Name */}
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#f0f0f0", color: "#666", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.65rem", fontWeight: 600, flexShrink: 0, fontFamily: "var(--font-display)" }}>
-                    {entry.employeeName.split(" ").map(n => n[0]).join("")}
+                    {(entry.employeeName || "?").split(" ").map(n => n[0]).join("")}
                   </div>
-                  <span style={{ fontSize: "0.85rem", fontWeight: 500, color: "#111" }}>{entry.employeeName}</span>
+                  <span style={{ fontSize: "0.85rem", fontWeight: 500, color: "#111" }}>{entry.employeeName || "Unknown"}</span>
                 </div>
                 {/* Activity */}
                 <span style={{ fontSize: "0.82rem", color: colors.text }}>{entry.activity}</span>
@@ -622,7 +863,20 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
                 {/* View button */}
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
                   <button
-                    onClick={() => setExpandedId(expanded ? null : entry.id)}
+                    onClick={() => {
+                      if (!expanded) {
+                        setExpandedId(entry.id);
+                        if (!entry.read) {
+                          if (filterBy === "Unread") setViewedInUnread(prev => new Set(prev).add(entry.id));
+                          setLogs(prev => prev.map(l => l.id === entry.id ? { ...l, read: true } : l));
+                          supabase.from("logs").update({ read: true }).eq("id", entry.id).then(({ error }) => {
+                            if (error) console.error("Error marking as read", error);
+                          });
+                        }
+                      } else {
+                        setExpandedId(null);
+                      }
+                    }}
                     style={{
                       display: "flex", alignItems: "center", gap: "4px",
                       padding: "5px 12px", fontSize: "0.72rem", fontWeight: 500, borderRadius: "8px", cursor: "pointer",
@@ -643,21 +897,24 @@ export default function Dashboard({ onNavigate }: { onNavigate: (route: string, 
               </div>
 
               {expanded && (
-                <ExpandedRow
-                  entry={entry}
-                  allTags={entry.tags}
-                  newTag={newTag}
-                  onNewTagChange={setNewTag}
-                  onAddTag={() => addTag(entry.id)}
-                  onRemoveTag={tag => removeTag(entry.id, tag)}
-                  saving={savingTag === entry.id}
-                  onExpandMap={(lat, lng) => onNavigate("map", { lat, lng })}
-                />
+                <ErrorBoundary>
+                  <ExpandedRow
+                    entry={entry}
+                    allTags={entry.tags || []}
+                    newTag={newTag}
+                    onNewTagChange={setNewTag}
+                    onAddTag={() => addTag(entry.id)}
+                    onRemoveTag={tag => removeTag(entry.id, tag)}
+                    saving={savingTag === entry.id}
+                    onExpandMap={(lat, lng) => onNavigate("map", { lat, lng })}
+                  />
+                </ErrorBoundary>
               )}
             </div>
           );
         })}
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

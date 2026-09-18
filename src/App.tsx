@@ -9,7 +9,10 @@ function AppShell() {
   const { session, loading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeRoute, setActiveRoute] = useState("dashboard");
+  const [navState, setNavState] = useState<Record<string, unknown> | null>(null);
   const [mapFocus, setMapFocus] = useState<{ lat: number; lng: number } | null>(null);
+
+  const [unreadCount, setUnreadCount] = useState(0);
 
   if (loading) {
     return (
@@ -32,6 +35,7 @@ function AppShell() {
       setMapFocus(null);
     }
     setActiveRoute(route);
+    setNavState(state || null);
   };
 
   return (
@@ -41,10 +45,11 @@ function AppShell() {
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         activeRoute={activeRoute}
         onNavigate={handleNavigate}
+        unreadCount={unreadCount}
       />
       <main className="flex-1 overflow-y-auto" style={{ background: "var(--color-bg)" }}>
-        {activeRoute === "dashboard" && <Dashboard onNavigate={handleNavigate} />}
-        {activeRoute === "map" && <MapPage focusLat={mapFocus?.lat} focusLng={mapFocus?.lng} />}
+        {activeRoute === "dashboard" && <Dashboard onNavigate={handleNavigate} onUnreadCountChange={setUnreadCount} navState={navState} />}
+        {activeRoute === "map" && <MapPage focusLat={mapFocus?.lat} focusLng={mapFocus?.lng} onNavigate={handleNavigate} />}
         {activeRoute !== "dashboard" && activeRoute !== "map" && (
           <div className="flex items-center justify-center h-full" style={{ color: "var(--color-text-muted)", fontFamily: "var(--font-display)" }}>
             <div className="text-center">
